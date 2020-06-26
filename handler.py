@@ -114,28 +114,30 @@ def extract_vimeo(event, context):
                  }
         try:
             source_id = v.get('uri', '').rsplit('/', 1)[1]
-            video['SourceId'] = source_id
-            video['OriginalFilename'] = f'Vimeo{source_id}'
-
-            # It seems that a Vimeo video often has 7 thumbnail pictures.
-            # Vidapp: 1280x720 as large, 640x360 as medium and 295x166 as small.
-            for pic in v['pictures']['sizes']:
-                if pic['width'] == 1280 or pic['height'] == 720:
-                    video['ThumbnailSource'] = video['SourceThumbnailSource'] = pic['link']
-                    video['Thumbnails']['source'] = video['Thumbnails']['large'] = pic['link']
-                elif pic['width'] == 640 or pic['height'] == 360:
-                    video['Thumbnails']['medium'] = pic['link']
-                elif pic['width'] == 295 or pic['height'] == 166:
-                    video['Thumbnails']['small'] = pic['link']
-
-            video['Files'].extend({'Type': f['type'],
-                                   'URL': f['link'],
-                                   'Size': str(f['size']),
-                                   } for f in v['files'])
         except IndexError:
             # Without source ID, we log an error and skip this entry
             logger.error(f'Failed to retrieve source ID from uri:{v["uri"]}')
             continue
+
+        video['SourceId'] = source_id
+        video['OriginalFilename'] = f'Vimeo{source_id}'
+
+        # It seems that a Vimeo video often has 7 thumbnail pictures.
+        # Vidapp: 1280x720 as large, 640x360 as medium and 295x166 as small.
+        for pic in v['pictures']['sizes']:
+            if pic['width'] == 1280 or pic['height'] == 720:
+                video['ThumbnailSource'] = video['SourceThumbnailSource'] = pic['link']
+                video['Thumbnails']['source'] = video['Thumbnails']['large'] = pic['link']
+            elif pic['width'] == 640 or pic['height'] == 360:
+                video['Thumbnails']['medium'] = pic['link']
+            elif pic['width'] == 295 or pic['height'] == 166:
+                video['Thumbnails']['small'] = pic['link']
+
+        video['Files'].extend({'Type': f['type'],
+                               'URL': f['link'],
+                               'Size': str(f['size']),
+                               } for f in v['files'])
+
         result.append(video)
 
     # logger.debug(json.dumps(result, indent=4))
