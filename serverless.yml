@@ -64,7 +64,7 @@ functions:
     handler: handler.extract_vimeo
     events:
       - http:
-          path: hello
+          path: extractvimeo
           method: get
           cors: true
 #    The following are a few example events you can configure
