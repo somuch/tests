@@ -60,8 +60,8 @@ outputs:
 #    - exclude-me-dir/**
 
 functions:
-  hello:
-    handler: handler.hello
+  extractVimeo:
+    handler: handler.extract_vimeo
     events:
       - http:
           path: hello
