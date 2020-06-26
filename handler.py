@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -30,7 +29,9 @@ class VimeoVideos:
 
     api_base = 'https://api.vimeo.com'
 
-    def __init__(self):
+    def __init__(self, modified_after=None):
+        self.modified_after = modified_after
+
         # videos is used to save the video data pulled from Vimeo
         self.videos = []
 
@@ -55,7 +56,13 @@ class VimeoVideos:
 
         if response.status_code == 200:
             json_resp = response.json()
-            self.videos.extend(json_resp['data'])
+
+            # if modified_after is set, we only retrieve Vimeo videos newer than the given time
+            if self.modified_after:
+                # This is something COOL in python!!
+                self.videos.extend(v for v in json_resp['data'] if v['modified_time'] > self.modified_after)
+            else:
+                self.videos.extend(json_resp['data'])
             logger.debug(f'retrieved {len(json_resp["data"])} videos')
 
             next_page = json_resp['paging']['next']
@@ -87,40 +94,52 @@ class VimeoVideos:
             fatal(f'Fatal error requesting {url}. Response code {response.status_code}')
 
 
-def vimeo2vidapp(videos):
+def extract_vimeo(event, context):
+    vv = VimeoVideos(modified_after=event.get('modifiedAfter'))
+    vv.pull_videos()
+
     result = []
-    for v in videos:
-        video = {"Type": "video",
-                 "AppId": "",
-                 "OriginalFilename": "",
-                 "Title": "",
-                 "ThumbnailSource": "",
-                 "DurationSeconds": "",
+    for v in vv.videos:
+        video = {"Type": v["type"],
+                 "AppId": event.get("AppId", "UnknownAppId"),
+                 "Title": v["name"],
+                 "DurationSeconds": str(v["duration"]),
                  "DataSource": "Vimeo",
-                 "SourceId": "",
-                 "SourceDescription": "",
-                 "SourceThumbnailSource": "",
-                 "SourceDateUploaded": "2019-11-12 20:47:59",
+                 "SourceDescription": v["description"],
+                 "SourceDateUploaded": v['release_time'],
                  "Published": "Published",
-                 "Tag": "|Pipe|Delimited|Video|Tags",
-                 "Files": [
-                     {
-                         "Type": "540",
-                         "URL": "https://player.vimeo.com/external/372726546.sd",
-                         "Size": "743098000"
-                     }
-                 ]
+                 "Tag": '|'.join(tag for tag in v["tags"]),
+                 "Files": [],
+                 "Thumbnails": {},
                  }
+        try:
+            source_id = v.get('uri', '').rsplit('/', 1)[1]
+            video['SourceId'] = source_id
+            video['OriginalFilename'] = f'Vimeo{source_id}'
+
+            # It seems that a Vimeo video often has 7 thumbnail pictures.
+            # Vidapp: 1280x720 as large, 640x360 as medium and 295x166 as small.
+            for pic in v['pictures']['sizes']:
+                if pic['width'] == 1280 or pic['height'] == 720:
+                    video['ThumbnailSource'] = video['SourceThumbnailSource'] = pic['link']
+                    video['Thumbnails']['source'] = video['Thumbnails']['large'] = pic['link']
+                elif pic['width'] == 640 or pic['height'] == 360:
+                    video['Thumbnails']['medium'] = pic['link']
+                elif pic['width'] == 295 or pic['height'] == 166:
+                    video['Thumbnails']['small'] = pic['link']
+
+            video['Files'].extend({'Type': f['type'],
+                                   'URL': f['link'],
+                                   'Size': str(f['size']),
+                                   } for f in v['files'])
+        except IndexError:
+            # Without source ID, we log an error and skip this entry
+            logger.error(f'Failed to retrieve source ID from uri:{v["uri"]}')
+            continue
         result.append(video)
 
-    logger.debug(json.dumps(result, indent=4))
+    # logger.debug(json.dumps(result, indent=4))
     return result
-
-
-def extract_vimeo(event, context):
-    vv = VimeoVideos()
-    vv.pull_videos()
-    return vimeo2vidapp(vv.videos)
 
 
 if __name__ == "__main__":
